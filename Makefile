@@ -1,4 +1,5 @@
-TARGET := riscv64-unknown-linux-gnu
+# TARGET := riscv64-unknown-linux-gnu
+TARGET := /home/ubuntu/app/riscv-ckb/bin/riscv64-unknown-linux-gnu
 CC := $(TARGET)-gcc
 LD := $(TARGET)-gcc
 OBJCOPY := $(TARGET)-objcopy
@@ -11,7 +12,9 @@ LDFLAGS_MBEDTLS := -Wl,-static -Wl,--gc-sections
 PASSED_MBEDTLS_CFLAGS := -Os -fPIC -nostdinc -nostdlib -DCKB_DECLARATION_ONLY -I ../../ckb-c-stdlib/libc -fdata-sections -ffunction-sections
 
 CFLAGS_BLST := -fno-builtin-printf -Ideps/blst/bindings $(subst ckb-c-stdlib,ckb-c-stdlib-202106,$(CFLAGS))
-CKB_VM_CLI := ckb-vm-b-cli
+# CKB_VM_CLI := ckb-vm-b-cli
+CKB_VM_CLI := /home/ubuntu/src/ckb-vm-cli/target/release/ckb-vm-b-cli
+
 
 MOLC := moleculec
 MOLC_VERSION := 0.7.0
@@ -104,7 +107,7 @@ $(SECP256K1_SRC):
 blst-apply-patch:
 	cd deps/blst; git apply ../../blst/blst.patch || echo "applying patch: ignore errors if applied."
 
-blst-demo: blst-apply-patch build/blst-demo-no-asm build/blst-demo build/bls12_381_sighash_all
+blst-demo: blst-apply-patch build/blst-demo-no-asm build/blst-demo build/blst-demo-rvv build/bls12_381_sighash_all
 
 build/bls12_381_sighash_all: c/bls12_381_sighash_all.c build/server-asm.o build/blst_mul_mont_384.o build/blst_mul_mont_384x.o
 	$(CC) $(CFLAGS_BLST) ${LDFLAGS} -o $@ $^
@@ -117,7 +120,16 @@ build/server.o: deps/blst/src/server.c deps/blst/src/no_asm.h
 build/server-asm.o: deps/blst/src/server.c deps/blst/src/no_asm.h
 	$(CC) -c -DUSE_MUL_MONT_384_ASM -DCKB_DECLARATION_ONLY $(CFLAGS_BLST) $(LDFLAGS) -o $@ $<
 
+build/server-asm-rvv.o: deps/blst/src/server.c deps/blst/src/no_asm.h
+	$(CC) -c -DUSE_MUL_MONT_384_ASM -DUSE_RVV -DCKB_DECLARATION_ONLY $(CFLAGS_BLST) $(LDFLAGS) -o $@ $<
+
 build/blst_mul_mont_384.o: blst/blst_mul_mont_384.riscv.S
+	$(CC) -c -DCKB_DECLARATION_ONLY $(CFLAGS_BLST) -o $@ $^
+
+build/blst_mul_mont_384_rvv_gen.S: blst/blst_mul_mont_384_rvv.riscv.S
+	rvv-as $^ > $@
+
+build/blst_mul_mont_384_rvv.o: build/blst_mul_mont_384_rvv_gen.S
 	$(CC) -c -DCKB_DECLARATION_ONLY $(CFLAGS_BLST) -o $@ $^
 
 build/blst_mul_mont_384x.o: blst/blst_mul_mont_384x.riscv.S
@@ -129,11 +141,17 @@ build/blst-demo-no-asm: tests/blst/main.c build/server.o
 build/blst-demo: tests/blst/main.c build/server-asm.o build/blst_mul_mont_384.o build/blst_mul_mont_384x.o
 	$(CC) $(CFLAGS_BLST) ${LDFLAGS} -o $@ $^
 
-run-blst-no-asm:
+build/blst-demo-rvv: tests/blst/main.c build/server-asm-rvv.o build/blst_mul_mont_384_rvv.o build/blst_mul_mont_384x.o
+	$(CC) $(CFLAGS_BLST) ${LDFLAGS} -o $@ $^
+
+run-blst-no-asm: build/blst-demo-no-asm
 	$(CKB_VM_CLI) --bin build/blst-demo-no-asm
 
-run-blst:
+run-blst: build/blst-demo
 	$(CKB_VM_CLI) --bin build/blst-demo
+
+run-blst-rvv: build/blst-demo-rvv
+	$(CKB_VM_CLI) --bin build/blst-demo-rvv
 
 install-ckb-vm-cli:
 	echo "start to install tool: ckb-vm-cli"
@@ -160,7 +178,7 @@ clean:
 	cd deps/secp256k1 && [ -f "Makefile" ] && make clean
 	make -C deps/mbedtls/library clean
 	rm -f build/rsa_sighash_all
-	rm -f build/blst* build/server.o build/server-asm.o
+	rm -f build/blst* build/server.o build/server-asm.o build/server-asm-rvv.o
 
 dist: clean all
 
