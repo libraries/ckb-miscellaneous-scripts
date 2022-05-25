@@ -1,5 +1,5 @@
 diff --git a/src/no_asm.h b/src/no_asm.h
-index d2ea50f..eb736b8 100644
+index d2ea50f..d43aa5d 100644
 --- a/src/no_asm.h
 +++ b/src/no_asm.h
 @@ -8,6 +8,10 @@
@@ -13,7 +13,7 @@ index d2ea50f..eb736b8 100644
  #if defined(__clang__)
  # pragma GCC diagnostic ignored "-Wstatic-in-inline"
  #endif
-@@ -83,7 +87,48 @@ inline void sqr_mont_##bits(vec##bits ret, const vec##bits a, \
+@@ -83,7 +87,91 @@ inline void sqr_mont_##bits(vec##bits ret, const vec##bits a, \
  MUL_MONT_IMPL(256)
  #undef mul_mont_256
  #undef sqr_mont_256
@@ -23,14 +23,19 @@ index d2ea50f..eb736b8 100644
 +#if USE_RVV
 +void blst_mul_mont_384_rvv(limb_t ret[], const limb_t a[], const limb_t b[],
 +                           const limb_t n[], const limb_t np1[], const uint64_t size);
++const limb_t BLS12_381_P_U512[8] = {
++    0xb9feffffffffaaab, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf,
++    0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0x0000000000000000, 0x0000000000000000};
++const limb_t BLS12_381_N0_U512[8] = {
++    0x89f3fffcfffcfffd, 0x286adb92d9d113e8, 0x16ef2ef0c8e30b48, 0x19ecca0e8eb2db4c,
++    0x68b316fee268cf58, 0xceb06106feaafc94, 0x0000000000000000, 0x0000000000000000};
 +inline void mul_mont_384(vec384 ret, const vec384 a,
-+                  const vec384 b, const vec384 p, limb_t n0) {
++                  const vec384 b, const vec384 p, const limb_t n0) {
++    // assert(n0 == 0x89f3fffcfffcfffd);
 +    const limb_t A[8] = {a[0], a[1], a[2], a[3], a[4], a[5], 0, 0};
 +    const limb_t B[8] = {b[0], b[1], b[2], b[3], b[4], b[5], 0, 0};
-+    const limb_t n[8] = {0xb9feffffffffaaab, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf, 0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0, 0};
-+    const limb_t n_reverse[8] = {0x89f3fffcfffcfffd, 0x286adb92d9d113e8, 0x16ef2ef0c8e30b48, 0x19ecca0e8eb2db4c, 0x68b316fee268cf58, 0xceb06106feaafc94, 0, 0};
 +    limb_t new_ret[8] = {};
-+    blst_mul_mont_384_rvv(new_ret, A, B, n, n_reverse, 1);
++    blst_mul_mont_384_rvv(new_ret, A, B, BLS12_381_P_U512, BLS12_381_N0_U512, 1);
 +    ret[0] = new_ret[0];
 +    ret[1] = new_ret[1];
 +    ret[2] = new_ret[2];
@@ -38,9 +43,47 @@ index d2ea50f..eb736b8 100644
 +    ret[4] = new_ret[4];
 +    ret[5] = new_ret[5];
 +}
++
++const limb_t BLS12_381_P_U512_2[16] = {
++    0xb9feffffffffaaab, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf,
++    0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0x0000000000000000, 0x0000000000000000,
++    0xb9feffffffffaaab, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf,
++    0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0x0000000000000000, 0x0000000000000000};
++const limb_t BLS12_381_N0_U512_2[16] = {
++    0x89f3fffcfffcfffd, 0x286adb92d9d113e8, 0x16ef2ef0c8e30b48, 0x19ecca0e8eb2db4c,
++    0x68b316fee268cf58, 0xceb06106feaafc94, 0x0000000000000000, 0x0000000000000000,
++    0x89f3fffcfffcfffd, 0x286adb92d9d113e8, 0x16ef2ef0c8e30b48, 0x19ecca0e8eb2db4c,
++    0x68b316fee268cf58, 0xceb06106feaafc94, 0x0000000000000000, 0x0000000000000000};
++inline void mul_mont_384_batch_2(
++    vec384 ret0, const vec384 a0, const vec384 b0, const vec384 p0, const limb_t n00,
++    vec384 ret1, const vec384 a1, const vec384 b1, const vec384 p1, const limb_t n01) {
++    const limb_t A[16] = {
++        a0[0], a0[1], a0[2], a0[3], a0[4], a0[5], 0, 0,
++        a1[0], a1[1], a1[2], a1[3], a1[4], a1[5], 0, 0,
++    };
++    const limb_t B[16] = {
++        b0[0], b0[1], b0[2], b0[3], b0[4], b0[5], 0, 0,
++        b1[0], b1[1], b1[2], b1[3], b1[4], b1[5], 0, 0,
++    };
++    limb_t new_ret[16] = {};
++    blst_mul_mont_384_rvv(new_ret, A, B, BLS12_381_P_U512_2, BLS12_381_N0_U512_2, 2);
++    ret0[0] = new_ret[0];
++    ret0[1] = new_ret[1];
++    ret0[2] = new_ret[2];
++    ret0[3] = new_ret[3];
++    ret0[4] = new_ret[4];
++    ret0[5] = new_ret[5];
++    ret1[0] = new_ret[8];
++    ret1[1] = new_ret[9];
++    ret1[2] = new_ret[10];
++    ret1[3] = new_ret[11];
++    ret1[4] = new_ret[12];
++    ret1[5] = new_ret[13];
++}
++
 +inline void sqr_mont_384(vec384 ret, const vec384 a,
 +                            const vec384 p, limb_t n0)
-+{   mul_mont_n(ret, a, a, p, n0, NLIMBS(384));   }
++{   mul_mont_384(ret, a, a, p, n0);   }
 +#else
 +void blst_mul_mont_384(vec384 ret, const vec384 a,
 +                  const vec384 b, const vec384 p, limb_t n0);
@@ -62,7 +105,7 @@ index d2ea50f..eb736b8 100644
  
  static void add_mod_n(limb_t ret[], const limb_t a[], const limb_t b[],
                        const limb_t p[], size_t n)
-@@ -582,6 +627,17 @@ inline limb_t sgn0_pty_mont_384x(const vec384x a, const vec384 p, limb_t n0)
+@@ -582,6 +670,17 @@ inline limb_t sgn0_pty_mont_384x(const vec384x a, const vec384 p, limb_t n0)
      return sgn0_pty_mod_384x(tmp, p);
  }
  
@@ -80,7 +123,7 @@ index d2ea50f..eb736b8 100644
  void mul_mont_384x(vec384x ret, const vec384x a, const vec384x b,
                            const vec384 p, limb_t n0)
  {
-@@ -596,6 +652,8 @@ void mul_mont_384x(vec384x ret, const vec384x a, const vec384x b,
+@@ -596,6 +695,8 @@ void mul_mont_384x(vec384x ret, const vec384x a, const vec384x b,
      sub_mod_n(ret[1], bb, aa, p, NLIMBS(384));
      sub_mod_n(ret[1], ret[1], cc, p, NLIMBS(384));
  }
@@ -89,6 +132,29 @@ index d2ea50f..eb736b8 100644
  
  /*
   * mul_mont_n without final conditional subtraction, which implies
+diff --git a/src/vect.c b/src/vect.c
+index 1834a48..642b146 100644
+--- a/src/vect.c
++++ b/src/vect.c
+@@ -127,10 +127,16 @@ void sqr_mont_384x(vec384x ret, const vec384x a, const vec384 mod, limb_t n0)
+     add_mod_384(t0, a[0], a[1], mod);
+     sub_mod_384(t1, a[0], a[1], mod);
+ 
++#if USE_RVV
++    mul_mont_384_batch_2(
++        ret[1], a[0], a[1], mod, n0,
++        ret[0], t0, t1, mod, n0
++    );
++#else
+     mul_mont_384(ret[1], a[0], a[1], mod, n0);
+-    add_mod_384(ret[1], ret[1], ret[1], mod);
+-
+     mul_mont_384(ret[0], t0, t1, mod, n0);
++#endif
++    add_mod_384(ret[1], ret[1], ret[1], mod);
+ }
+ #endif
+ 
 diff --git a/src/vect.h b/src/vect.h
 index bef15cf..f3e31eb 100644
 --- a/src/vect.h

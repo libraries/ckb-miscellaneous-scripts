@@ -163,6 +163,7 @@ static int sign_and_verify(void) {
 
 int main(int argc, const char *argv[]) {
 #if 1
+  for (int i = 0; i < 100; i++) { verify_only(); }
   return verify_only();
 #else
   return sign_and_verify();
